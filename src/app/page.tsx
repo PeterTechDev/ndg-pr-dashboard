@@ -544,6 +544,32 @@ export default function Dashboard() {
           <span>Auto-refreshes every 5 minutes</span>
         </div>
       </main>
+
+      {/* Site footer */}
+      <footer className="border-t border-[var(--color-border)] mt-8">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 flex items-center justify-between">
+          <span className="text-[11px] text-[var(--color-text-tertiary)]">
+            Built by{" "}
+            <a
+              href="https://github.com/petersouza"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors"
+            >
+              Peter Souza
+            </a>
+          </span>
+          <a
+            href="https://github.com/petersouza/ndg-pr-dashboard"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 text-[11px] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)] transition-colors"
+          >
+            <GitHubIcon className="w-3.5 h-3.5" />
+            <span>Source</span>
+          </a>
+        </div>
+      </footer>
     </div>
   );
 }
