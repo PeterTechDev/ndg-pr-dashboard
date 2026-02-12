@@ -1,12 +1,12 @@
-import { PullRequest } from "../types";
-
-export async function fetchGitHubPRs(): Promise<PullRequest[]> {
+// GitHub provider — kept but unused (NDG uses GitLab + Bitbucket only)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function fetchGitHubPRs(): Promise<any[]> {
   const token = process.env.GITHUB_TOKEN;
   const orgs = (process.env.GITHUB_ORGS || "").split(",").filter(Boolean);
   
   if (!token || orgs.length === 0) return [];
 
-  const prs: PullRequest[] = [];
+  const prs: any[] = [];
 
   for (const org of orgs) {
     try {

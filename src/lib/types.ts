@@ -1,4 +1,4 @@
-export type Platform = "github" | "gitlab" | "bitbucket";
+export type Platform = "gitlab" | "bitbucket";
 
 export type PRStatus = "open" | "approved" | "changes_requested" | "merged" | "declined";
 

@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { fetchGitHubPRs } from "@/lib/providers/github";
 import { fetchGitLabMRs } from "@/lib/providers/gitlab";
 import { fetchBitbucketPRs } from "@/lib/providers/bitbucket";
 import { PullRequest } from "@/lib/types";
@@ -15,21 +14,19 @@ function addAge(pr: PullRequest): PullRequest {
 
 export async function GET() {
   try {
-    const [github, gitlab, bitbucket] = await Promise.all([
-      fetchGitHubPRs().catch(() => []),
+    const [gitlab, bitbucket] = await Promise.all([
       fetchGitLabMRs().catch(() => []),
       fetchBitbucketPRs().catch(() => []),
     ]);
 
-    const all = [...github, ...gitlab, ...bitbucket]
+    const all = [...gitlab, ...bitbucket]
       .map(addAge)
-      .sort((a, b) => (b.ageDays || 0) - (a.ageDays || 0)); // oldest first
+      .sort((a, b) => (b.ageDays || 0) - (a.ageDays || 0));
 
     return NextResponse.json({
       prs: all,
       counts: {
         total: all.length,
-        github: github.length,
         gitlab: gitlab.length,
         bitbucket: bitbucket.length,
       },
