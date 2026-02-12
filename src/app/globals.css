@@ -1,1 +1,61 @@
 @import "tailwindcss";
+
+@theme {
+  --color-surface-0: #09090b;
+  --color-surface-1: #0f0f13;
+  --color-surface-2: #16161c;
+  --color-surface-3: #1e1e26;
+  --color-border: #23232e;
+  --color-border-subtle: #1a1a24;
+  --color-text-primary: #ededf0;
+  --color-text-secondary: #8b8b9e;
+  --color-text-tertiary: #55556a;
+  --color-accent-github: #8b5cf6;
+  --color-accent-gitlab: #f97316;
+  --color-accent-bitbucket: #3b82f6;
+  --color-status-approved: #22c55e;
+  --color-status-pending: #eab308;
+  --color-status-changes: #ef4444;
+  --color-age-fresh: #22c55e;
+  --color-age-aging: #f59e0b;
+  --color-age-stale: #ef4444;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-pulse-dot {
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out both;
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--color-surface-2) 25%, var(--color-surface-3) 50%, var(--color-surface-2) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-text-tertiary); }
+
+/* Selection */
+::selection { background: rgba(139, 92, 246, 0.3); }
