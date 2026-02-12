@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback } from "react";
-import { PullRequest, Platform } from "@/lib/types";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { PullRequest, Platform, ReviewerInfo, CIStatus } from "@/lib/types";
 import { MOCK_PRS } from "@/lib/mock-data";
 
 // ─── Icons ───────────────────────────────────────────────────────────────────
@@ -46,9 +47,27 @@ function ArrowIcon({ className = "w-3 h-3" }: { className?: string }) {
   );
 }
 
+function SearchIcon({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+    </svg>
+  );
+}
+
+function ChevronIcon({ className = "w-4 h-4", expanded }: { className?: string; expanded: boolean }) {
+  return (
+    <svg className={`${className} transition-transform duration-150 ${expanded ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+    </svg>
+  );
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 type SortKey = "age" | "updated" | "author";
+
+const MY_USERNAME = process.env.NEXT_PUBLIC_MY_USERNAME || "";
 
 function ageColor(days: number): "fresh" | "aging" | "stale" {
   if (days <= 1) return "fresh";
@@ -73,15 +92,35 @@ function timeAgo(dateStr: string): string {
   return `${days}d ago`;
 }
 
+function hoursInReview(pr: PullRequest): number | null {
+  const ref = pr.reviewRequestedAt || pr.createdAt;
+  if (!ref) return null;
+  return Math.round((Date.now() - new Date(ref).getTime()) / 3600000);
+}
+
 const platformMeta: Record<Platform, { label: string; icon: typeof GitHubIcon; colorClass: string; bgClass: string }> = {
   github: { label: "GitHub", icon: GitHubIcon, colorClass: "text-[var(--color-accent-github)]", bgClass: "bg-[var(--color-accent-github)]" },
   gitlab: { label: "GitLab", icon: GitLabIcon, colorClass: "text-[var(--color-accent-gitlab)]", bgClass: "bg-[var(--color-accent-gitlab)]" },
   bitbucket: { label: "Bitbucket", icon: BitbucketIcon, colorClass: "text-[var(--color-accent-bitbucket)]", bgClass: "bg-[var(--color-accent-bitbucket)]" },
 };
 
+const reviewStatusConfig: Record<string, { label: string; color: string }> = {
+  approved: { label: "Approved", color: "text-[var(--color-status-approved)]" },
+  changes_requested: { label: "Changes requested", color: "text-[var(--color-status-changes)]" },
+  pending: { label: "Pending", color: "text-[var(--color-status-pending)]" },
+  commented: { label: "Commented", color: "text-[var(--color-text-secondary)]" },
+};
+
+const ciConfig: Record<CIStatus, { label: string; color: string; icon: string }> = {
+  success: { label: "Passing", color: "text-[var(--color-status-approved)]", icon: "✓" },
+  failure: { label: "Failing", color: "text-[var(--color-status-changes)]", icon: "✗" },
+  pending: { label: "Pending", color: "text-[var(--color-status-pending)]", icon: "○" },
+  running: { label: "Running", color: "text-[var(--color-accent-github)]", icon: "◎" },
+};
+
 // ─── Components ──────────────────────────────────────────────────────────────
 
-function StatCard({ value, label, color }: { value: number; label: string; color?: string }) {
+function StatCard({ value, label, color }: { value: string | number; label: string; color?: string }) {
   return (
     <div className="flex flex-col gap-1 px-5 py-4">
       <span className={`text-2xl font-semibold tracking-tight tabular-nums ${color || "text-[var(--color-text-primary)]"}`}>
@@ -244,74 +283,196 @@ function PlatformBadge({ platform }: { platform: Platform }) {
   );
 }
 
-function PRCard({ pr, index }: { pr: PullRequest; index: number }) {
+function CIBadge({ status }: { status?: CIStatus }) {
+  if (!status) return null;
+  const c = ciConfig[status];
   return (
-    <a
-      href={pr.url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="group flex items-center gap-3 sm:gap-4 px-4 py-3 border-b border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-2)]/50 transition-colors duration-100 animate-slide-up"
+    <span className={`inline-flex items-center gap-1 text-[11px] font-medium ${c.color}`}>
+      <span>{c.icon}</span>
+      <span>{c.label}</span>
+    </span>
+  );
+}
+
+function ReviewerRow({ reviewer }: { reviewer: ReviewerInfo }) {
+  const cfg = reviewStatusConfig[reviewer.status] || reviewStatusConfig.pending;
+  return (
+    <div className="flex items-center gap-2 py-1">
+      {reviewer.avatar ? (
+        <img src={reviewer.avatar} alt={reviewer.name} className="w-5 h-5 rounded-full bg-[var(--color-surface-3)]" />
+      ) : (
+        <div className="w-5 h-5 rounded-full bg-[var(--color-surface-3)] flex items-center justify-center text-[9px] font-medium text-[var(--color-text-secondary)]">
+          {reviewer.name.charAt(0)}
+        </div>
+      )}
+      <span className="text-xs text-[var(--color-text-secondary)]">{reviewer.name}</span>
+      <span className={`text-[11px] ${cfg.color}`}>{cfg.label}</span>
+    </div>
+  );
+}
+
+function LabelTag({ label }: { label: string }) {
+  return (
+    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-[var(--color-surface-3)] text-[var(--color-text-secondary)] border border-[var(--color-border)]">
+      {label}
+    </span>
+  );
+}
+
+function PRCard({
+  pr,
+  index,
+  isSelected,
+  isExpanded,
+  onToggleExpand,
+  prRef,
+}: {
+  pr: PullRequest;
+  index: number;
+  isSelected: boolean;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
+  prRef: (el: HTMLDivElement | null) => void;
+}) {
+  const isStale = (pr.ageDays || 0) >= 5;
+  const reviewHours = hoursInReview(pr);
+
+  return (
+    <div
+      ref={prRef}
+      className={`border-b border-[var(--color-border-subtle)] animate-slide-up ${
+        isSelected ? "bg-[var(--color-surface-2)]/80" : ""
+      } ${isStale ? "stale-pulse" : ""}`}
       style={{ animationDelay: `${index * 30}ms` }}
     >
-      {/* Platform icon */}
-      <div className="flex-shrink-0 w-8 flex justify-center">
-        <PlatformBadge platform={pr.platform} />
+      <div
+        onClick={(e) => {
+          e.preventDefault();
+          onToggleExpand();
+        }}
+        className="group flex items-center gap-3 sm:gap-4 px-4 py-3 hover:bg-[var(--color-surface-2)]/50 transition-colors duration-100 cursor-pointer"
+      >
+        {/* Expand chevron */}
+        <div className="flex-shrink-0 w-4">
+          <ChevronIcon className="w-3 h-3 text-[var(--color-text-tertiary)]" expanded={isExpanded} />
+        </div>
+
+        {/* Platform icon */}
+        <div className="flex-shrink-0 w-8 flex justify-center">
+          <PlatformBadge platform={pr.platform} />
+        </div>
+
+        {/* Main content */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-sm text-[var(--color-text-primary)] truncate group-hover:text-white transition-colors">
+              {pr.title}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 mt-0.5 text-[11px] text-[var(--color-text-tertiary)]">
+            <span className="font-medium text-[var(--color-text-secondary)]">{pr.repo.split("/").pop()}</span>
+            <span className="opacity-40">·</span>
+            <span className="hidden sm:inline-flex items-center gap-1">
+              <BranchIcon className="w-2.5 h-2.5" />
+              <span className="truncate max-w-[120px]">{pr.sourceBranch}</span>
+              <ArrowIcon className="w-2.5 h-2.5 opacity-40" />
+              <span>{pr.targetBranch}</span>
+            </span>
+            <span className="sm:hidden inline-flex items-center gap-1">
+              <BranchIcon className="w-2.5 h-2.5" />
+              <span className="truncate max-w-[80px]">{pr.sourceBranch}</span>
+            </span>
+            {reviewHours !== null && (
+              <>
+                <span className="opacity-40">·</span>
+                <span className="tabular-nums">⏱ {reviewHours}h in review</span>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Right side meta */}
+        <div className="flex items-center gap-3 flex-shrink-0">
+          <div className="hidden sm:block">
+            <StatusPill status={pr.status} />
+          </div>
+          <AgeBadge days={pr.ageDays || 0} />
+          <div className="flex items-center gap-1.5" title={pr.author}>
+            {pr.authorAvatar ? (
+              <img
+                src={pr.authorAvatar}
+                alt={pr.author}
+                className="w-6 h-6 rounded-full bg-[var(--color-surface-3)] ring-1 ring-[var(--color-border)]"
+              />
+            ) : (
+              <div className="w-6 h-6 rounded-full bg-[var(--color-surface-3)] flex items-center justify-center text-[10px] font-medium text-[var(--color-text-secondary)] ring-1 ring-[var(--color-border)]">
+                {pr.author.charAt(0)}
+              </div>
+            )}
+          </div>
+          <span className="text-[11px] text-[var(--color-text-tertiary)] tabular-nums w-14 text-right hidden md:block">
+            {timeAgo(pr.updatedAt)}
+          </span>
+        </div>
       </div>
 
-      {/* Main content */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="font-medium text-sm text-[var(--color-text-primary)] truncate group-hover:text-white transition-colors">
-            {pr.title}
-          </span>
-        </div>
-        <div className="flex items-center gap-2 mt-0.5 text-[11px] text-[var(--color-text-tertiary)]">
-          <span className="font-medium text-[var(--color-text-secondary)]">{pr.repo.split("/").pop()}</span>
-          <span className="opacity-40">·</span>
-          <span className="hidden sm:inline-flex items-center gap-1">
-            <BranchIcon className="w-2.5 h-2.5" />
-            <span className="truncate max-w-[120px]">{pr.sourceBranch}</span>
-            <ArrowIcon className="w-2.5 h-2.5 opacity-40" />
-            <span>{pr.targetBranch}</span>
-          </span>
-          <span className="sm:hidden inline-flex items-center gap-1">
-            <BranchIcon className="w-2.5 h-2.5" />
-            <span className="truncate max-w-[80px]">{pr.sourceBranch}</span>
-          </span>
-        </div>
-      </div>
+      {/* Expanded details */}
+      {isExpanded && (
+        <div className="px-4 pb-4 pl-16 space-y-3 border-t border-[var(--color-border-subtle)] bg-[var(--color-surface-0)]/50">
+          <div className="pt-3">
+            {/* Description */}
+            {pr.description && (
+              <p className="text-xs text-[var(--color-text-secondary)] leading-relaxed mb-3">
+                {pr.description.slice(0, 200)}{pr.description.length > 200 ? "…" : ""}
+              </p>
+            )}
 
-      {/* Right side meta */}
-      <div className="flex items-center gap-3 flex-shrink-0">
-        {/* Status pill */}
-        <div className="hidden sm:block">
-          <StatusPill status={pr.status} />
-        </div>
+            <div className="flex flex-wrap gap-6">
+              {/* Reviewers */}
+              {pr.reviewerDetails && pr.reviewerDetails.length > 0 && (
+                <div>
+                  <h4 className="text-[11px] text-[var(--color-text-tertiary)] uppercase tracking-wider font-medium mb-1">Reviewers</h4>
+                  {pr.reviewerDetails.map((r) => (
+                    <ReviewerRow key={r.name} reviewer={r} />
+                  ))}
+                </div>
+              )}
 
-        {/* Age */}
-        <AgeBadge days={pr.ageDays || 0} />
+              {/* CI Status */}
+              {pr.ciStatus && (
+                <div>
+                  <h4 className="text-[11px] text-[var(--color-text-tertiary)] uppercase tracking-wider font-medium mb-1">CI/Build</h4>
+                  <CIBadge status={pr.ciStatus} />
+                </div>
+              )}
 
-        {/* Author avatar */}
-        <div className="flex items-center gap-1.5" title={pr.author}>
-          {pr.authorAvatar ? (
-            <img
-              src={pr.authorAvatar}
-              alt={pr.author}
-              className="w-6 h-6 rounded-full bg-[var(--color-surface-3)] ring-1 ring-[var(--color-border)]"
-            />
-          ) : (
-            <div className="w-6 h-6 rounded-full bg-[var(--color-surface-3)] flex items-center justify-center text-[10px] font-medium text-[var(--color-text-secondary)] ring-1 ring-[var(--color-border)]">
-              {pr.author.charAt(0)}
+              {/* Labels */}
+              {pr.labels && pr.labels.length > 0 && (
+                <div>
+                  <h4 className="text-[11px] text-[var(--color-text-tertiary)] uppercase tracking-wider font-medium mb-1">Labels</h4>
+                  <div className="flex flex-wrap gap-1">
+                    {pr.labels.map((l) => (
+                      <LabelTag key={l} label={l} />
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-          )}
-        </div>
 
-        {/* Updated time */}
-        <span className="text-[11px] text-[var(--color-text-tertiary)] tabular-nums w-14 text-right hidden md:block">
-          {timeAgo(pr.updatedAt)}
-        </span>
-      </div>
-    </a>
+            {/* Open in new tab link */}
+            <a
+              href={pr.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 mt-3 text-xs text-[var(--color-accent-github)] hover:underline"
+              onClick={(e) => e.stopPropagation()}
+            >
+              Open PR ↗
+            </a>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -374,15 +535,47 @@ function RefreshIndicator({ isRefreshing, lastUpdated }: { isRefreshing: boolean
 
 // ─── Main Dashboard ──────────────────────────────────────────────────────────
 
-export default function Dashboard() {
+function DashboardInner() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
   const [prs, setPrs] = useState<PullRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDemo, setIsDemo] = useState(false);
-  const [filterPlatform, setFilterPlatform] = useState<Platform | "all">("all");
-  const [filterAuthor, setFilterAuthor] = useState<string>("all");
-  const [sortBy, setSortBy] = useState<SortKey>("age");
   const [fetchedAt, setFetchedAt] = useState<string>("");
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [selectedIndex, setSelectedIndex] = useState(-1);
+
+  // URL-synced state
+  const filterPlatform = (searchParams.get("platform") as Platform | "all") || "all";
+  const filterAuthor = searchParams.get("author") || "all";
+  const sortBy = (searchParams.get("sort") as SortKey) || "age";
+  const search = searchParams.get("q") || "";
+  const myPrs = searchParams.get("mine") === "1";
+
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const rowRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  const updateParam = useCallback(
+    (key: string, value: string, defaultValue: string = "") => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (value === defaultValue || value === "") {
+        params.delete(key);
+      } else {
+        params.set(key, value);
+      }
+      const str = params.toString();
+      router.replace(str ? `?${str}` : "/", { scroll: false });
+    },
+    [searchParams, router]
+  );
+
+  const setFilterPlatform = useCallback((v: Platform | "all") => updateParam("platform", v, "all"), [updateParam]);
+  const setFilterAuthor = useCallback((v: string) => updateParam("author", v, "all"), [updateParam]);
+  const setSortBy = useCallback((v: SortKey) => updateParam("sort", v, "age"), [updateParam]);
+  const setSearch = useCallback((v: string) => updateParam("q", v), [updateParam]);
+  const setMyPrs = useCallback((v: boolean) => updateParam("mine", v ? "1" : "", ""), [updateParam]);
 
   const fetchPRs = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -391,7 +584,6 @@ export default function Dashboard() {
       const res = await fetch("/api/prs");
       const data = await res.json();
       if (data.error || (data.prs && data.prs.length === 0)) {
-        // Fall back to demo data
         setPrs(MOCK_PRS);
         setIsDemo(true);
       } else {
@@ -423,6 +615,8 @@ export default function Dashboard() {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [prs]);
 
+  const myUsername = MY_USERNAME || (authors.length > 0 ? authors[0].name : "");
+
   const counts = useMemo(() => {
     const c = { total: prs.length, open: 0, approved: 0, changes: 0, github: 0, gitlab: 0, bitbucket: 0 };
     prs.forEach((p) => {
@@ -434,10 +628,25 @@ export default function Dashboard() {
     return c;
   }, [prs]);
 
+  const avgReviewHours = useMemo(() => {
+    const hours = prs.map(hoursInReview).filter((h): h is number => h !== null);
+    if (hours.length === 0) return 0;
+    return Math.round(hours.reduce((a, b) => a + b, 0) / hours.length);
+  }, [prs]);
+
   const filtered = useMemo(() => {
+    const q = search.toLowerCase();
     let result = prs.filter((pr) => {
       if (filterPlatform !== "all" && pr.platform !== filterPlatform) return false;
       if (filterAuthor !== "all" && pr.author !== filterAuthor) return false;
+      if (myPrs && pr.author !== myUsername) return false;
+      if (q) {
+        const match =
+          pr.title.toLowerCase().includes(q) ||
+          pr.repo.toLowerCase().includes(q) ||
+          pr.author.toLowerCase().includes(q);
+        if (!match) return false;
+      }
       return true;
     });
 
@@ -455,9 +664,80 @@ export default function Dashboard() {
     });
 
     return result;
-  }, [prs, filterPlatform, filterAuthor, sortBy]);
+  }, [prs, filterPlatform, filterAuthor, sortBy, search, myPrs, myUsername]);
 
-  const hasFilters = filterPlatform !== "all" || filterAuthor !== "all";
+  // Reset selectedIndex when filtered list changes
+  useEffect(() => {
+    setSelectedIndex(-1);
+  }, [filtered.length, search, filterPlatform, filterAuthor, myPrs]);
+
+  // Keyboard navigation
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      const target = e.target as HTMLElement;
+      const isInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT";
+
+      // Cmd+K or / to focus search (when not in input)
+      if ((e.key === "/" && !isInput) || (e.key === "k" && (e.metaKey || e.ctrlKey))) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        return;
+      }
+
+      // Escape: blur search and clear
+      if (e.key === "Escape") {
+        if (document.activeElement === searchInputRef.current) {
+          searchInputRef.current?.blur();
+          if (search) setSearch("");
+        }
+        return;
+      }
+
+      // j/k navigation (when not in input)
+      if (!isInput) {
+        if (e.key === "j") {
+          e.preventDefault();
+          setSelectedIndex((prev) => {
+            const next = Math.min(prev + 1, filtered.length - 1);
+            rowRefs.current[next]?.scrollIntoView({ block: "nearest" });
+            return next;
+          });
+          return;
+        }
+        if (e.key === "k") {
+          e.preventDefault();
+          setSelectedIndex((prev) => {
+            const next = Math.max(prev - 1, 0);
+            rowRefs.current[next]?.scrollIntoView({ block: "nearest" });
+            return next;
+          });
+          return;
+        }
+        // Enter to open PR
+        if (e.key === "Enter" && selectedIndex >= 0 && selectedIndex < filtered.length) {
+          e.preventDefault();
+          const pr = filtered[selectedIndex];
+          if (pr.url && pr.url !== "#") {
+            window.open(pr.url, "_blank");
+          } else {
+            // Toggle expand
+            setExpandedIds((prev) => {
+              const next = new Set(prev);
+              if (next.has(pr.id)) next.delete(pr.id);
+              else next.add(pr.id);
+              return next;
+            });
+          }
+          return;
+        }
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [filtered, selectedIndex, search, setSearch]);
+
+  const hasFilters = filterPlatform !== "all" || filterAuthor !== "all" || !!search || myPrs;
 
   return (
     <div className="min-h-screen bg-[var(--color-surface-0)]">
@@ -494,12 +774,48 @@ export default function Dashboard() {
           <StatCard value={counts.open} label="Pending" color="text-[var(--color-status-pending)]" />
           <StatCard value={counts.approved} label="Approved" color="text-[var(--color-status-approved)]" />
           <StatCard value={counts.changes} label="Changes" color="text-[var(--color-status-changes)]" />
+          <StatCard value={`${avgReviewHours}h`} label="Avg Review Time" color="text-[var(--color-text-secondary)]" />
+        </div>
+
+        {/* Search bar */}
+        <div className="relative mb-4">
+          <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+            <SearchIcon className="w-4 h-4 text-[var(--color-text-tertiary)]" />
+          </div>
+          <input
+            ref={searchInputRef}
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search PRs by title, repo, or author… (/ or ⌘K)"
+            className="w-full bg-[var(--color-surface-1)] border border-[var(--color-border)] rounded-lg pl-10 pr-4 py-2 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-accent-github)] focus:border-[var(--color-accent-github)] transition-colors"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+              className="absolute inset-y-0 right-0 flex items-center pr-3 text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)] cursor-pointer"
+            >
+              <span className="text-xs">✕</span>
+            </button>
+          )}
         </div>
 
         {/* Toolbar */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
           <PlatformTabs active={filterPlatform} onChange={setFilterPlatform} counts={counts} />
           <div className="flex-1" />
+          {/* My PRs toggle */}
+          <button
+            onClick={() => setMyPrs(!myPrs)}
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer border ${
+              myPrs
+                ? "bg-[var(--color-accent-github)]/10 text-[var(--color-accent-github)] border-[var(--color-accent-github)]/30"
+                : "text-[var(--color-text-tertiary)] border-[var(--color-border)] hover:text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-2)]"
+            }`}
+            title={`Filter to ${myUsername}'s PRs`}
+          >
+            My PRs
+          </button>
           <SortSelect value={sortBy} onChange={setSortBy} />
         </div>
 
@@ -514,6 +830,7 @@ export default function Dashboard() {
         <div className="bg-[var(--color-surface-1)] border border-[var(--color-border)] rounded-xl overflow-hidden">
           {/* List header */}
           <div className="flex items-center gap-3 sm:gap-4 px-4 py-2 border-b border-[var(--color-border)] text-[11px] text-[var(--color-text-tertiary)] uppercase tracking-wider font-medium">
+            <div className="w-4" />
             <div className="w-8 text-center">Src</div>
             <div className="flex-1">Pull Request</div>
             <div className="hidden sm:block w-16 text-center">Status</div>
@@ -529,7 +846,23 @@ export default function Dashboard() {
           ) : (
             <div>
               {filtered.map((pr, i) => (
-                <PRCard key={pr.id} pr={pr} index={i} />
+                <PRCard
+                  key={pr.id}
+                  pr={pr}
+                  index={i}
+                  isSelected={selectedIndex === i}
+                  isExpanded={expandedIds.has(pr.id)}
+                  onToggleExpand={() => {
+                    setExpandedIds((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(pr.id)) next.delete(pr.id);
+                      else next.add(pr.id);
+                      return next;
+                    });
+                    setSelectedIndex(i);
+                  }}
+                  prRef={(el) => { rowRefs.current[i] = el; }}
+                />
               ))}
             </div>
           )}
@@ -541,35 +874,23 @@ export default function Dashboard() {
             {filtered.length} {filtered.length === 1 ? "pull request" : "pull requests"}
             {hasFilters ? " (filtered)" : ""}
           </span>
-          <span>Auto-refreshes every 5 minutes</span>
+          <div className="flex items-center gap-3">
+            <span className="hidden sm:inline opacity-60">j/k navigate · Enter open · / search</span>
+            <span>Auto-refreshes every 5 minutes</span>
+          </div>
         </div>
       </main>
-
-      {/* Site footer */}
-      <footer className="border-t border-[var(--color-border)] mt-8">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 flex items-center justify-between">
-          <span className="text-[11px] text-[var(--color-text-tertiary)]">
-            Built by{" "}
-            <a
-              href="https://github.com/petersouza"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors"
-            >
-              Peter Souza
-            </a>
-          </span>
-          <a
-            href="https://github.com/petersouza/ndg-pr-dashboard"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1.5 text-[11px] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)] transition-colors"
-          >
-            <GitHubIcon className="w-3.5 h-3.5" />
-            <span>Source</span>
-          </a>
-        </div>
-      </footer>
     </div>
+  );
+}
+
+// Wrap in Suspense for useSearchParams
+import { Suspense } from "react";
+
+export default function Dashboard() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[var(--color-surface-0)]" />}>
+      <DashboardInner />
+    </Suspense>
   );
 }

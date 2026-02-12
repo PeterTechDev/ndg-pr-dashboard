@@ -59,3 +59,13 @@
 
 /* Selection */
 ::selection { background: rgba(139, 92, 246, 0.3); }
+
+/* Stale PR pulse */
+@keyframes stale-border-pulse {
+  0%, 100% { box-shadow: inset 0 0 0 0 transparent; }
+  50% { box-shadow: inset 2px 0 0 0 rgba(239, 68, 68, 0.4); }
+}
+
+.stale-pulse {
+  animation: stale-border-pulse 3s ease-in-out infinite;
+}
