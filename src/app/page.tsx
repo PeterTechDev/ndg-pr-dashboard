@@ -3,6 +3,28 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { PullRequest, Platform, ReviewerInfo, CIStatus } from "@/lib/types";
+
+// ─── Age Helpers ─────────────────────────────────────────────────────────────
+
+function ageFromCreated(createdAt: string): { label: string; level: "fresh" | "aging" | "stale" } {
+  const ms = Date.now() - new Date(createdAt).getTime();
+  const mins = Math.floor(ms / 60000);
+  const hrs = ms / 3600000;
+  const d = ms / 86400000;
+
+  let label: string;
+  if (mins < 60) label = `${Math.max(1, mins)}m`;
+  else if (hrs < 24) label = `${Math.floor(hrs)}h`;
+  else if (d < 7) label = `${Math.floor(d)}d`;
+  else label = `${Math.floor(d / 7)}w`;
+
+  let level: "fresh" | "aging" | "stale";
+  if (hrs < 4) level = "fresh";
+  else if (d < 2) level = "aging";
+  else level = "stale";
+
+  return { label, level };
+}
 import { MOCK_PRS } from "@/lib/mock-data";
 
 // ─── Icons ───────────────────────────────────────────────────────────────────
@@ -69,17 +91,7 @@ type SortKey = "age" | "updated" | "author";
 
 const MY_USERNAME = process.env.NEXT_PUBLIC_MY_USERNAME || "";
 
-function ageColor(days: number): "fresh" | "aging" | "stale" {
-  if (days <= 1) return "fresh";
-  if (days <= 4) return "aging";
-  return "stale";
-}
-
-function ageDaysLabel(days: number): string {
-  if (days === 0) return "Today";
-  if (days === 1) return "1d";
-  return `${days}d`;
-}
+// ageColor and ageDaysLabel replaced by ageFromCreated above
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -98,8 +110,7 @@ function hoursInReview(pr: PullRequest): number | null {
   return Math.round((Date.now() - new Date(ref).getTime()) / 3600000);
 }
 
-const platformMeta: Record<Platform, { label: string; icon: typeof GitHubIcon; colorClass: string; bgClass: string }> = {
-  github: { label: "GitHub", icon: GitHubIcon, colorClass: "text-[var(--color-accent-github)]", bgClass: "bg-[var(--color-accent-github)]" },
+const platformMeta: Record<Platform, { label: string; icon: typeof GitLabIcon; colorClass: string; bgClass: string }> = {
   gitlab: { label: "GitLab", icon: GitLabIcon, colorClass: "text-[var(--color-accent-gitlab)]", bgClass: "bg-[var(--color-accent-gitlab)]" },
   bitbucket: { label: "Bitbucket", icon: BitbucketIcon, colorClass: "text-[var(--color-accent-bitbucket)]", bgClass: "bg-[var(--color-accent-bitbucket)]" },
 };
@@ -142,9 +153,8 @@ function PlatformTabs({
   onChange: (v: Platform | "all") => void;
   counts: Record<string, number>;
 }) {
-  const tabs: { key: Platform | "all"; label: string; icon?: typeof GitHubIcon; color?: string }[] = [
+  const tabs: { key: Platform | "all"; label: string; icon?: typeof GitLabIcon; color?: string }[] = [
     { key: "all", label: "All" },
-    { key: "github", label: "GitHub", icon: GitHubIcon, color: "var(--color-accent-github)" },
     { key: "gitlab", label: "GitLab", icon: GitLabIcon, color: "var(--color-accent-gitlab)" },
     { key: "bitbucket", label: "Bitbucket", icon: BitbucketIcon, color: "var(--color-accent-bitbucket)" },
   ];
@@ -259,8 +269,8 @@ function StatusPill({ status }: { status: string }) {
   );
 }
 
-function AgeBadge({ days }: { days: number }) {
-  const level = ageColor(days);
+function AgeBadge({ createdAt }: { createdAt: string }) {
+  const { label, level } = ageFromCreated(createdAt);
   const colorMap = {
     fresh: "bg-[var(--color-age-fresh)]/10 text-[var(--color-age-fresh)]",
     aging: "bg-[var(--color-age-aging)]/10 text-[var(--color-age-aging)]",
@@ -268,7 +278,7 @@ function AgeBadge({ days }: { days: number }) {
   };
   return (
     <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-mono font-medium tabular-nums ${colorMap[level]}`}>
-      {ageDaysLabel(days)}
+      {label}
     </span>
   );
 }
@@ -396,7 +406,7 @@ function PRCard({
           <div className="hidden sm:block">
             <StatusPill status={pr.status} />
           </div>
-          <AgeBadge days={pr.ageDays || 0} />
+          <AgeBadge createdAt={pr.createdAt} />
           <div className="flex items-center gap-1.5" title={pr.author}>
             {pr.authorAvatar ? (
               <img
@@ -618,12 +628,12 @@ function DashboardInner() {
   const myUsername = MY_USERNAME || (authors.length > 0 ? authors[0].name : "");
 
   const counts = useMemo(() => {
-    const c = { total: prs.length, open: 0, approved: 0, changes: 0, github: 0, gitlab: 0, bitbucket: 0 };
+    const c: Record<string, number> = { total: prs.length, open: 0, approved: 0, changes: 0, gitlab: 0, bitbucket: 0 };
     prs.forEach((p) => {
       if (p.status === "open") c.open++;
       if (p.status === "approved") c.approved++;
       if (p.status === "changes_requested") c.changes++;
-      c[p.platform]++;
+      if (c[p.platform] !== undefined) c[p.platform]++;
     });
     return c;
   }, [prs]);

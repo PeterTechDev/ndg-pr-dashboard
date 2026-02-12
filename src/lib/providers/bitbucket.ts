@@ -12,7 +12,6 @@ export async function fetchBitbucketPRs(): Promise<PullRequest[]> {
 
   for (const workspace of workspaces) {
     try {
-      // Get repos
       const reposRes = await fetch(
         `https://api.bitbucket.org/2.0/repositories/${workspace}?pagelen=100`,
         { headers: { Authorization: `Basic ${auth}` }, next: { revalidate: 300 } }
@@ -31,7 +30,23 @@ export async function fetchBitbucketPRs(): Promise<PullRequest[]> {
         for (const pr of prData.values || []) {
           const participants = pr.participants || [];
           const hasApproval = participants.some((p: any) => p.approved);
-          const hasChangesRequested = participants.some((p: any) => p.state === "changes_requested");
+          // Bitbucket Cloud uses "changes_requested" for participant state
+          const hasChangesRequested = participants.some(
+            (p: any) => p.state === "changes_requested" || p.state === "changes-requested"
+          );
+
+          const reviewerDetails = participants
+            .filter((p: any) => p.role === "REVIEWER")
+            .map((p: any) => {
+              let reviewStatus: "pending" | "approved" | "changes_requested" | "commented" = "pending";
+              if (p.approved) reviewStatus = "approved";
+              else if (p.state === "changes_requested" || p.state === "changes-requested") reviewStatus = "changes_requested";
+              return {
+                name: p.user?.display_name || p.user?.nickname || "",
+                avatar: p.user?.links?.avatar?.href,
+                status: reviewStatus,
+              };
+            });
 
           prs.push({
             id: `bitbucket-${repo.slug}-${pr.id}`,
@@ -43,6 +58,7 @@ export async function fetchBitbucketPRs(): Promise<PullRequest[]> {
             repo: `${workspace}/${repo.slug}`,
             status: hasChangesRequested ? "changes_requested" : hasApproval ? "approved" : "open",
             reviewers: participants.filter((p: any) => p.role === "REVIEWER").map((p: any) => p.user?.display_name || ""),
+            reviewerDetails: reviewerDetails.length > 0 ? reviewerDetails : undefined,
             createdAt: pr.created_on,
             updatedAt: pr.updated_on,
             sourceBranch: pr.source?.branch?.name || "",
