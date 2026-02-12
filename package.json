@@ -1,7 +1,7 @@
 {
   "name": "ndg-pr-dashboard",
   "version": "1.0.0",
-  "description": "",
+  "description": "A unified dashboard to monitor pull requests across GitHub, GitLab, and Bitbucket",
   "main": "index.js",
   "scripts": {
     "dev": "next dev",
@@ -9,8 +9,12 @@
     "start": "next start"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "Peter Souza",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/PeterTechDev/ndg-pr-dashboard.git"
+  },
   "dependencies": {
     "@tailwindcss/postcss": "^4.1.18",
     "@types/node": "^25.2.3",
