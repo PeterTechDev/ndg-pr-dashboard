@@ -51,11 +51,17 @@
   border-radius: 6px;
 }
 
-/* Scrollbar */
+/* Scrollbar — WebKit */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--color-text-tertiary); }
+
+/* Scrollbar — Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
 
 /* Selection */
 ::selection { background: rgba(139, 92, 246, 0.3); }
@@ -68,4 +74,18 @@
 
 .stale-pulse {
   animation: stale-border-pulse 3s ease-in-out infinite;
+}
+
+/* Responsive stat cards — last row centering on mobile when 5 items in 3-col grid */
+@media (max-width: 639px) {
+  .grid-cols-3 > :nth-child(4),
+  .grid-cols-3 > :nth-child(5) {
+    border-bottom: 0;
+  }
+}
+
+/* Focus-visible for accessibility */
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
+  outline: 2px solid var(--color-accent-github);
+  outline-offset: 2px;
 }

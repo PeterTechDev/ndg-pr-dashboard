@@ -1,16 +1,19 @@
-// GitHub provider — kept but unused (NDG uses GitLab + Bitbucket only)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function fetchGitHubPRs(): Promise<any[]> {
+// TODO: GitHub provider — kept for future use. NDG currently uses GitLab + Bitbucket only.
+// To enable: add "github" to the Platform type in types.ts, import in the API route,
+// and set GITHUB_TOKEN + GITHUB_ORGS env vars.
+
+import { PullRequest } from "../types";
+
+export async function fetchGitHubPRs(): Promise<PullRequest[]> {
   const token = process.env.GITHUB_TOKEN;
   const orgs = (process.env.GITHUB_ORGS || "").split(",").filter(Boolean);
-  
+
   if (!token || orgs.length === 0) return [];
 
-  const prs: any[] = [];
+  const prs: PullRequest[] = [];
 
   for (const org of orgs) {
     try {
-      // Get all repos for org
       const reposRes = await fetch(
         `https://api.github.com/orgs/${org}/repos?per_page=100&sort=updated`,
         { headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" }, next: { revalidate: 300 } }
@@ -41,6 +44,7 @@ export async function fetchGitHubPRs(): Promise<any[]> {
             author: pr.user?.login || "unknown",
             authorAvatar: pr.user?.avatar_url,
             url: pr.html_url,
+            // @ts-expect-error — github platform not in Platform type until enabled
             platform: "github",
             repo: `${org}/${repo.name}`,
             status: hasChangesRequested ? "changes_requested" : hasApproval ? "approved" : "open",

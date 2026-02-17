@@ -17,6 +17,7 @@ export interface PullRequest {
   title: string;
   description?: string;
   author: string;
+  authorEmail?: string;
   authorAvatar?: string;
   url: string;
   platform: Platform;

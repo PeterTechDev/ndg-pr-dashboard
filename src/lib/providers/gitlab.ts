@@ -18,77 +18,68 @@ export async function fetchGitLabMRs(): Promise<PullRequest[]> {
       if (!res.ok) continue;
       const mrs = await res.json();
 
-      for (const mr of mrs) {
-        let status: PullRequest["status"] = "open";
-        let reviewerDetails: NonNullable<PullRequest["reviewerDetails"]> = [];
+      // Parallelize approval + detail calls for all MRs
+      const enriched = await Promise.all(
+        mrs.map(async (mr: any) => {
+          let status: PullRequest["status"] = "open";
+          let reviewerDetails: NonNullable<PullRequest["reviewerDetails"]> = [];
 
-        try {
-          // Check approvals
-          const approvalRes = await fetch(
-            `${baseUrl}/api/v4/projects/${mr.project_id}/merge_requests/${mr.iid}/approvals`,
-            { headers: { "PRIVATE-TOKEN": token }, next: { revalidate: 300 } }
-          );
-          if (approvalRes.ok) {
-            const approval = await approvalRes.json();
-            if (approval.approved) status = "approved";
-          }
-        } catch {}
+          const mrReviewers = mr.reviewers || [];
 
-        // Check reviewer states for changes_requested
-        // GitLab 15.2+ includes reviewer details with state on the MR object
-        const mrReviewers = mr.reviewers || [];
-        if (mrReviewers.length > 0) {
-          // Fetch detailed MR to get reviewer states (the list endpoint may not include them)
-          try {
-            const detailRes = await fetch(
-              `${baseUrl}/api/v4/projects/${mr.project_id}/merge_requests/${mr.iid}?include_rebase_in_progress=false`,
+          // Fetch approvals and details in parallel
+          const [approvalResult, detailResult] = await Promise.all([
+            fetch(
+              `${baseUrl}/api/v4/projects/${mr.project_id}/merge_requests/${mr.iid}/approvals`,
               { headers: { "PRIVATE-TOKEN": token }, next: { revalidate: 300 } }
-            );
-            if (detailRes.ok) {
-              const detail = await detailRes.json();
-              const detailedReviewers = detail.reviewers || mrReviewers;
+            ).then(r => r.ok ? r.json() : null).catch(() => null),
+            mrReviewers.length > 0
+              ? fetch(
+                  `${baseUrl}/api/v4/projects/${mr.project_id}/merge_requests/${mr.iid}?include_rebase_in_progress=false`,
+                  { headers: { "PRIVATE-TOKEN": token }, next: { revalidate: 300 } }
+                ).then(r => r.ok ? r.json() : null).catch(() => null)
+              : Promise.resolve(null),
+          ]);
 
-              reviewerDetails = detailedReviewers.map((r: any) => {
-                // GitLab reviewer states: "unreviewed", "reviewed", "requested_changes", "approved"
-                let reviewStatus: "pending" | "approved" | "changes_requested" | "commented" = "pending";
-                const state = r.state || r.mergeability_status;
-                if (state === "approved") reviewStatus = "approved";
-                else if (state === "requested_changes") {
-                  reviewStatus = "changes_requested";
-                  status = "changes_requested"; // Override MR status
-                }
-                return {
-                  name: r.username || r.name,
-                  avatar: r.avatar_url,
-                  status: reviewStatus,
-                };
-              });
+          if (approvalResult?.approved) status = "approved";
 
-              // Also check if blocking_discussions_resolved is false as a hint
-              if (detail.blocking_discussions_resolved === false && status === "open") {
-                // There are unresolved discussions — might indicate changes requested
+          if (detailResult) {
+            const detailedReviewers = detailResult.reviewers || mrReviewers;
+            reviewerDetails = detailedReviewers.map((r: any) => {
+              let reviewStatus: "pending" | "approved" | "changes_requested" | "commented" = "pending";
+              const state = r.state || r.mergeability_status;
+              if (state === "approved") reviewStatus = "approved";
+              else if (state === "requested_changes") {
+                reviewStatus = "changes_requested";
+                status = "changes_requested";
               }
-            }
-          } catch {}
-        }
+              return {
+                name: r.username || r.name,
+                avatar: r.avatar_url,
+                status: reviewStatus,
+              };
+            });
+          }
 
-        prs.push({
-          id: `gitlab-${mr.project_id}-${mr.iid}`,
-          title: mr.title,
-          author: mr.author?.username || "unknown",
-          authorAvatar: mr.author?.avatar_url,
-          url: mr.web_url,
-          platform: "gitlab",
-          repo: mr.references?.full || `project/${mr.project_id}`,
-          status,
-          reviewers: mrReviewers.map((r: any) => r.username),
-          reviewerDetails: reviewerDetails.length > 0 ? reviewerDetails : undefined,
-          createdAt: mr.created_at,
-          updatedAt: mr.updated_at,
-          sourceBranch: mr.source_branch || "",
-          targetBranch: mr.target_branch || "",
-        });
-      }
+          return {
+            id: `gitlab-${mr.project_id}-${mr.iid}`,
+            title: mr.title,
+            author: mr.author?.username || "unknown",
+            authorAvatar: mr.author?.avatar_url,
+            url: mr.web_url,
+            platform: "gitlab" as const,
+            repo: (mr.references?.full || `project/${mr.project_id}`).replace(/![0-9]+$/, ""),
+            status,
+            reviewers: mrReviewers.map((r: any) => r.username),
+            reviewerDetails: reviewerDetails.length > 0 ? reviewerDetails : undefined,
+            createdAt: mr.created_at,
+            updatedAt: mr.updated_at,
+            sourceBranch: mr.source_branch || "",
+            targetBranch: mr.target_branch || "",
+          };
+        })
+      );
+
+      prs.push(...enriched);
     } catch (e) {
       console.error(`GitLab error for group ${groupId}:`, e);
     }
