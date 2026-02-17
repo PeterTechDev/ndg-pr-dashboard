@@ -1,6 +1,8 @@
 # NDG PR Dashboard
 
-Aggregates open pull requests from GitLab and Bitbucket into a single view for the NDG dev team.
+**Live:** https://ndg-pr-dashboard.netlify.app
+
+Aggregates open pull requests from GitLab and Bitbucket into a single view for the NDG dev team. Sign in with your `@ndgcommunications.com` Google account.
 
 ## Setup
 
