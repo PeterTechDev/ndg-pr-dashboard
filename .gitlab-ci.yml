@@ -1,25 +1,19 @@
-# Disabled while debugging Netlify deploy auth
-# Re-enable by uncommenting below
+stages:
+  - deploy
 
-#stages:
-#  - deploy
-#
-#deploy:
-#  stage: deploy
-#  image: node:22-alpine
-#  tags:
-#    - gitlab-runner-x86
-#  cache:
-#    key: ${CI_COMMIT_REF_SLUG}
-#    paths:
-#      - node_modules/
-#      - .next/cache/
-#  script:
-#    - npm ci
-#    - npm run build
-#    - npx -y netlify-cli deploy --prod --dir=.next --message="$CI_COMMIT_TITLE"
-#  variables:
-#    NETLIFY_AUTH_TOKEN: $NETLIFY_AUTH_TOKEN
-#    NETLIFY_SITE_ID: $NETLIFY_SITE_ID
-#  only:
-#    - master
+deploy:
+  stage: deploy
+  image: node:22-alpine
+  tags:
+    - gitlab-runner-x86
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}
+    paths:
+      - node_modules/
+      - .next/cache/
+  script:
+    - npm ci
+    - npm run build
+    - npx -y netlify-cli deploy --prod --dir=.next --message="$CI_COMMIT_TITLE"
+  only:
+    - master
