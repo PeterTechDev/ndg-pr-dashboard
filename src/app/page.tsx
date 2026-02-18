@@ -22,7 +22,7 @@ import {
 
 function DashboardInner() {
   const {
-    prs, loading, isDemo, fetchError, fetchedAt, isRefreshing, apiUsername, apiEmail, repos, fetchPRs,
+    prs, recentlyClosed, loading, isDemo, fetchError, fetchedAt, isRefreshing, apiUsername, apiEmail, repos, fetchPRs,
   } = usePRData();
 
   const filters = useFilters(prs, apiUsername, apiEmail);
@@ -48,6 +48,7 @@ function DashboardInner() {
 
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [selectedIndex, setSelectedIndex] = useState(-1);
+  const [showRecentlyClosed, setShowRecentlyClosed] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const rowRefs = useRef<(HTMLDivElement | null)[]>([]);
 
@@ -138,7 +139,7 @@ function DashboardInner() {
             )}
           </div>
           <div className="flex items-center gap-3">
-            <RefreshIndicator isRefreshing={isRefreshing} lastUpdated={fetchedAt} onRefresh={() => fetchPRs()} />
+            <RefreshIndicator isRefreshing={isRefreshing} lastUpdated={fetchedAt} onRefresh={() => fetchPRs(false, true)} />
             <UserMenu />
           </div>
         </div>
@@ -310,6 +311,66 @@ function DashboardInner() {
             window.scrollTo({ top: 0, behavior: "smooth" });
           }}
         />
+
+        {/* Recently Closed */}
+        {recentlyClosed.length > 0 && (
+          <div className="mt-4">
+            <button
+              onClick={() => setShowRecentlyClosed(!showRecentlyClosed)}
+              className="flex items-center gap-2 text-xs text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)] transition-colors cursor-pointer mb-2"
+            >
+              <svg
+                className={`w-3 h-3 transition-transform ${showRecentlyClosed ? "rotate-90" : ""}`}
+                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+              Recently closed ({recentlyClosed.length})
+            </button>
+            {showRecentlyClosed && (
+              <div className="bg-[var(--color-surface-1)] border border-[var(--color-border)] rounded-xl overflow-hidden opacity-60">
+                {recentlyClosed.map((pr, i) => (
+                  <div
+                    key={pr.id}
+                    className={`flex items-center gap-3 sm:gap-4 px-4 py-2.5 ${
+                      i < recentlyClosed.length - 1 ? "border-b border-[var(--color-border)]" : ""
+                    }`}
+                  >
+                    <div className="w-4" />
+                    <div className="w-8 flex justify-center">
+                      <span className="text-[10px] font-medium text-[var(--color-text-tertiary)] uppercase">
+                        {pr.platform === "gitlab" ? "GL" : "BB"}
+                      </span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <a
+                        href={pr.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-[var(--color-text-secondary)] line-through decoration-[var(--color-text-tertiary)]/40 hover:text-[var(--color-text-primary)] truncate block"
+                      >
+                        {pr.title}
+                      </a>
+                      <span className="text-[11px] text-[var(--color-text-tertiary)]">
+                        {pr.repo.split("/").pop()}
+                      </span>
+                    </div>
+                    <span className={`hidden sm:block w-20 text-center text-[11px] font-medium px-2 py-0.5 rounded-full ${
+                      pr.status === "merged"
+                        ? "bg-violet-500/10 text-violet-400"
+                        : "bg-red-500/10 text-red-400"
+                    }`}>
+                      {pr.status === "merged" ? "Merged" : "Declined"}
+                    </span>
+                    <span className="w-10 text-center text-[11px] text-[var(--color-text-tertiary)]">
+                      {pr.author}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="flex items-center justify-between mt-4 text-[11px] text-[var(--color-text-tertiary)]">
           <span>

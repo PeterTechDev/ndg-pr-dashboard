@@ -6,6 +6,7 @@ import { MOCK_PRS } from "@/lib/mock-data";
 
 export function usePRData() {
   const [prs, setPrs] = useState<PullRequest[]>([]);
+  const [recentlyClosed, setRecentlyClosed] = useState<PullRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDemo, setIsDemo] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -20,23 +21,24 @@ export function usePRData() {
     prsLengthRef.current = prs.length;
   }, [prs.length]);
 
-  const fetchPRs = useCallback(async (silent = false) => {
+  const fetchPRs = useCallback(async (silent = false, bustCache = false) => {
     if (!silent) setLoading(true);
     setIsRefreshing(true);
     setFetchError(null);
     try {
-      const res = await fetch("/api/prs");
+      const url = bustCache ? `/api/prs?bust=${Date.now()}` : "/api/prs";
+      const res = await fetch(url);
       if (!res.ok) throw new Error(`API returned ${res.status}`);
       const data = await res.json();
       if (data.myUsername) setApiUsername(data.myUsername);
       if (data.myEmail) setApiEmail(data.myEmail);
       if (data.error) {
-        // Actual API error — show mock data
         setPrs(MOCK_PRS);
+        setRecentlyClosed([]);
         setIsDemo(true);
       } else {
-        // Real data (even if empty)
         setPrs(data.prs || []);
+        setRecentlyClosed(data.recentlyClosed || []);
         setIsDemo(false);
       }
       setFetchedAt(data.fetchedAt || new Date().toISOString());
@@ -72,6 +74,7 @@ export function usePRData() {
 
   return {
     prs,
+    recentlyClosed,
     loading,
     isDemo,
     fetchError,

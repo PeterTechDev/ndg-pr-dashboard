@@ -20,7 +20,8 @@ export function useFilters(prs: PullRequest[], apiUsername: string, apiEmail: st
   const hideAncient = searchParams.get("hideOld") !== "0";
 
   // Default to all repos (empty set = all)
-  const [filterRepos, setFilterRepos] = useState<Set<string>>(new Set());
+  const DEFAULT_REPOS = new Set(["drbhomes-frontend", "drbhomes-touchscreen", "ndg-cms-fe", "pr-dashboard", "e2e-tests", "legend-homes-fe", "epcon-fe"]);
+  const [filterRepos, setFilterRepos] = useState<Set<string>>(DEFAULT_REPOS);
   const [currentPage, setCurrentPage] = useState(1);
 
   const myUsername = apiUsername || "";
@@ -102,9 +103,9 @@ export function useFilters(prs: PullRequest[], apiUsername: string, apiEmail: st
   }, [basePrs, myUsername, emailPrefix, isMe]);
 
   const myPrCount = useMemo(() => {
-    if (!myUsername) return 0;
+    if (!myUsername && !emailPrefix) return 0;
     return basePrs.filter((pr) => isMe(pr.author)).length;
-  }, [basePrs, myUsername]);
+  }, [basePrs, myUsername, emailPrefix, isMe]);
 
   const authors = useMemo(() => {
     const map = new Map<string, string | undefined>();
@@ -122,7 +123,7 @@ export function useFilters(prs: PullRequest[], apiUsername: string, apiEmail: st
     let result = basePrs.filter((pr) => {
       if (filterPlatform !== "all" && pr.platform !== filterPlatform) return false;
       if (filterAuthor !== "all" && pr.author !== filterAuthor) return false;
-      if (myPrs && pr.author !== myUsername) return false;
+      if (myPrs && !isMe(pr.author)) return false;
       if (myReviews) {
         const isReviewer = pr.reviewers?.some(r => isMe(r)) ||
           pr.reviewerDetails?.some(r => isMe(r.name));
