@@ -3,6 +3,7 @@ stages:
 
 deploy:
   stage: deploy
+  image: node:22-alpine
   tags:
     - gitlab-runner-x86
   cache:
@@ -13,6 +14,6 @@ deploy:
   script:
     - npm ci
     - npm run build
-    - npx netlify deploy --prod --auth=$NETLIFY_AUTH_TOKEN --site=$NETLIFY_SITE_ID
+    - npx netlify-cli deploy --prod --auth=$NETLIFY_AUTH_TOKEN --site=$NETLIFY_SITE_ID
   only:
     - master
