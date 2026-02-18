@@ -20,7 +20,10 @@ export function useFilters(prs: PullRequest[], apiUsername: string, apiEmail: st
   const hideAncient = searchParams.get("hideOld") !== "0";
 
   // Default to all repos (empty set = all)
-  const DEFAULT_REPOS = new Set(["drbhomes-frontend", "drbhomes-touchscreen", "ndg-cms-fe", "pr-dashboard", "e2e-tests", "legend-homes-fe", "epcon-fe"]);
+  const DEFAULT_REPOS = new Set([
+    "e2e-tests", "legend-homes-fe", "epcon-fe", "weaver-fe",
+    "drbhomes-frontend", "ndg-cms-fe", "ndg-cms", "ndg-dev-hub", "ndg-cms-export",
+  ]);
   const [filterRepos, setFilterRepos] = useState<Set<string>>(DEFAULT_REPOS);
   const [currentPage, setCurrentPage] = useState(1);
 
