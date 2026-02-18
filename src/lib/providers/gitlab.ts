@@ -1,8 +1,6 @@
 import { PullRequest } from "../types";
 
-// Repos completely hidden from the dashboard
-const BLOCKED_REPOS = ["tributer-touchscreen", "beazer-touchscreen"];
-const isBlocked = (repo: string) => BLOCKED_REPOS.some(b => repo.toLowerCase().includes(b));
+import { isBlockedRepo } from "../blocked-repos";
 
 export async function fetchGitLabMRs(): Promise<PullRequest[]> {
   const token = process.env.GITLAB_TOKEN;
@@ -89,7 +87,7 @@ export async function fetchGitLabMRs(): Promise<PullRequest[]> {
     }
   }
 
-  return prs.filter(pr => !isBlocked(pr.repo));
+  return prs.filter(pr => !isBlockedRepo(pr.repo));
 }
 
 export async function fetchGitLabRecentlyClosed(): Promise<PullRequest[]> {
@@ -133,5 +131,5 @@ export async function fetchGitLabRecentlyClosed(): Promise<PullRequest[]> {
     }
   }
 
-  return prs.filter(pr => !isBlocked(pr.repo));
+  return prs.filter(pr => !isBlockedRepo(pr.repo));
 }

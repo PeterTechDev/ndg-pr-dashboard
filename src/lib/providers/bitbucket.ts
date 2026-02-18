@@ -1,4 +1,5 @@
 import { PullRequest } from "../types";
+import { isBlockedRepo } from "../blocked-repos";
 
 export async function fetchBitbucketPRs(): Promise<PullRequest[]> {
   const username = process.env.BITBUCKET_USERNAME;
@@ -19,7 +20,7 @@ export async function fetchBitbucketPRs(): Promise<PullRequest[]> {
       if (!reposRes.ok) continue;
       const reposData = await reposRes.json();
 
-      const repos = reposData.values || [];
+      const repos = (reposData.values || []).filter((r: any) => !isBlockedRepo(r.slug));
 
       // Fetch PRs in parallel batches of 10
       const BATCH_SIZE = 10;
@@ -106,7 +107,7 @@ export async function fetchBitbucketRecentlyClosed(): Promise<PullRequest[]> {
       );
       if (!reposRes.ok) continue;
       const reposData = await reposRes.json();
-      const repos = reposData.values || [];
+      const repos = (reposData.values || []).filter((r: any) => !isBlockedRepo(r.slug));
 
       // Only check top 10 most recently updated repos to limit API calls
       const topRepos = repos.slice(0, 10);
